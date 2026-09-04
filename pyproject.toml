@@ -1,5 +1,5 @@
 [project]
-name = "py-template"
+name = "docmesh-kbms"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -12,11 +12,11 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["py_template*"]
+include = ["kbms*"]
 exclude = []
 
 [tool.pytest.ini_options]
-testpaths = ["test_py_template"]
+testpaths = ["test_kbms"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 markers = []
