@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import inspect
 from collections.abc import Sequence
 from typing import ClassVar
 
@@ -22,6 +24,12 @@ class MilvusVectorStore:
         self.client = client
         self.collection_name = collection_name
         self.dimension = dimension
+
+    async def _async_client_call(self, method_name: str, **kwargs: object) -> object:
+        method = getattr(self.client, method_name)
+        if inspect.iscoroutinefunction(method):
+            return await method(**kwargs)
+        return await asyncio.to_thread(method, **kwargs)
 
     def ensure_collection(self) -> None:
         if self.client.has_collection(collection_name=self.collection_name):
@@ -88,15 +96,19 @@ class MilvusVectorStore:
         if not rows:
             return {"insert_count": 0}
         await self.aensure_collection()
-        return await self.client.insert(
+        return await self._async_client_call(
+            "insert",
             collection_name=self.collection_name,
             data=list(rows),
         )
 
     async def aensure_collection(self) -> None:
-        if await self.client.has_collection(collection_name=self.collection_name):
+        if await self._async_client_call(
+            "has_collection", collection_name=self.collection_name
+        ):
             return
-        await self.client.create_collection(
+        await self._async_client_call(
+            "create_collection",
             collection_name=self.collection_name,
             dimension=self.dimension,
             primary_field_name="id",
@@ -121,7 +133,8 @@ class MilvusVectorStore:
             if value is not None:
                 escaped = value.replace("\\", "\\\\").replace('"', '\\"')
                 filters.append(f'{field} == "{escaped}"')
-        return await self.client.search(
+        return await self._async_client_call(
+            "search",
             collection_name=self.collection_name,
             data=[list(vector)],
             filter=" and ".join(filters),
@@ -132,10 +145,13 @@ class MilvusVectorStore:
     async def adelete_document(self, document_id: str) -> object:
         if not document_id.strip():
             raise ValueError("document_id must not be blank")
-        if not await self.client.has_collection(collection_name=self.collection_name):
+        if not await self._async_client_call(
+            "has_collection", collection_name=self.collection_name
+        ):
             return {"delete_count": 0}
         escaped_id = document_id.replace("\\", "\\\\").replace('"', '\\"')
-        return await self.client.delete(
+        return await self._async_client_call(
+            "delete",
             collection_name=self.collection_name,
             filter=f'document_id == "{escaped_id}"',
         )

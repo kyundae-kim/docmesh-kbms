@@ -25,3 +25,32 @@ def test_ingestion_does_not_decode_binary_content_or_index_it() -> None:
     service = DocumentIngestionService(indexer)
     assert service.ingest(document_id="doc-001", content_type="image/png", content=b"\x89PNG").text is None
     assert indexer.calls == []
+
+
+def test_ingestion_extracts_json_content() -> None:
+    indexer = FakeIndexer()
+    service = DocumentIngestionService(indexer)
+
+    result = service.ingest(
+        document_id="doc-001",
+        content_type="application/json",
+        content=b'{"name":"Ada","active":true}',
+    )
+
+    assert result.text == '{\n  "active": true,\n  "name": "Ada"\n}'
+    assert indexer.calls == [("doc-001", result.text)]
+
+
+def test_ingestion_rejects_invalid_json_content() -> None:
+    service = DocumentIngestionService(FakeIndexer())
+
+    try:
+        service.ingest(
+            document_id="doc-001",
+            content_type="application/json",
+            content=b"not-json",
+        )
+    except ValueError as error:
+        assert str(error) == "JSON content must be valid UTF-8 JSON"
+    else:
+        raise AssertionError("invalid JSON was accepted")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 from uuid import uuid4
@@ -7,10 +8,8 @@ from uuid import uuid4
 import ollama
 import pytest
 from minio import Minio
-from pymilvus import MilvusClient
-from sqlalchemy import create_engine
-from sqlalchemy.engine import Engine
-from sqlalchemy.orm import Session
+from pymilvus import AsyncMilvusClient, MilvusClient
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 
 from kbms import KnowledgeManagement
 
@@ -31,8 +30,8 @@ def real_service_config() -> dict[str, str]:
 
 async def _exercise_facade(
     *,
-    engine: Engine,
-    milvus: MilvusClient,
+    engine: AsyncEngine,
+    milvus: AsyncMilvusClient | MilvusClient,
     config: dict[str, str],
 ) -> None:
     collection_name = f"kbms_e2e_{uuid4().hex}"
@@ -41,7 +40,7 @@ async def _exercise_facade(
     partition_id = "kbms-e2e"
 
     try:
-        with Session(engine) as session:
+        async with AsyncSession(engine) as session:
             facade = KnowledgeManagement(
                 engine=engine,
                 minio_client=Minio(
@@ -51,7 +50,7 @@ async def _exercise_facade(
                     secure=False,
                 ),
                 bucket_name=config["minio_bucket"],
-                ollama_client=ollama.Client(host=config["ollama_host"]),
+                ollama_client=ollama.AsyncClient(host=config["ollama_host"]),
                 milvus_client=milvus,
                 embedding_model=config["embedding_model"],
                 collection_name=collection_name,
@@ -74,7 +73,7 @@ async def _exercise_facade(
                 document_id=document_id,
                 created_by="kbms-e2e",
             )
-            session.commit()
+            await session.commit()
 
             hits = await facade.search("searchable document knowledge", limit=1)
             content = await facade.get_document_content(
@@ -83,6 +82,16 @@ async def _exercise_facade(
                 partition_id=partition_id,
             )
             assert result.document_id == document_id
+            status = await facade.get_pipeline_status(document_id)
+            assert status is not None and status.status == "indexed"
+            page = await facade.list_documents(
+                partition_kind=partition_kind, partition_id=partition_id
+            )
+            assert page.items[0].document_id == document_id
+            metadata = await facade.get_document_metadata(
+                document_id, partition_kind=partition_kind, partition_id=partition_id
+            )
+            assert metadata.document_id == document_id
             assert hits and hits[0].document_id == document_id
             assert content.content.startswith(b"Knowledge management")
 
@@ -92,10 +101,18 @@ async def _exercise_facade(
                 partition_id=partition_id,
                 hard_delete=True,
             )
-            session.commit()
+            await session.commit()
     finally:
-        if milvus.has_collection(collection_name):
-            milvus.drop_collection(collection_name=collection_name)
+        if isinstance(milvus, AsyncMilvusClient):
+            exists = await milvus.has_collection(collection_name)
+            if exists:
+                await milvus.drop_collection(collection_name=collection_name)
+        else:
+            exists = await asyncio.to_thread(milvus.has_collection, collection_name)
+            if exists:
+                await asyncio.to_thread(
+                    milvus.drop_collection, collection_name=collection_name
+                )
 
 
 @pytest.mark.integration
@@ -110,9 +127,9 @@ async def test_real_facade_supports_database_and_milvus_access_modes(
     real_service_config: dict[str, str],
 ) -> None:
     if database_kind == "memory":
-        database_uri = "sqlite:///:memory:"
+        database_uri = "sqlite+aiosqlite:///:memory:"
     elif database_kind == "disk":
-        database_uri = f"sqlite:///{tmp_path / 'kbms-e2e.db'}"
+        database_uri = f"sqlite+aiosqlite:///{tmp_path / 'kbms-e2e.db'}"
     else:
         database_uri = os.getenv(
             "KBMS_POSTGRES_URL",
@@ -124,8 +141,12 @@ async def test_real_facade_supports_database_and_milvus_access_modes(
     else:
         milvus_uri = os.getenv("KBMS_MILVUS_URI", "http://milvus:19530")
 
-    engine = create_engine(database_uri)
-    milvus = MilvusClient(uri=milvus_uri)
+    engine = create_async_engine(database_uri)
+    milvus = (
+        MilvusClient(uri=milvus_uri)
+        if milvus_kind == "local"
+        else AsyncMilvusClient(uri=milvus_uri)
+    )
     try:
         await _exercise_facade(
             engine=engine,
@@ -133,4 +154,4 @@ async def test_real_facade_supports_database_and_milvus_access_modes(
             config=real_service_config,
         )
     finally:
-        engine.dispose()
+        await engine.dispose()

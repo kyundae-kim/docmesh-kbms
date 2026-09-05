@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -84,7 +85,14 @@ class DocumentIngestionService:
 
     @staticmethod
     def _extract_text(content_type: str, content: bytes) -> str | None:
-        if not content_type.lower().startswith("text/"):
+        media_type = content_type.lower().split(";", 1)[0].strip()
+        if media_type == "application/json":
+            try:
+                value = json.loads(content.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as error:
+                raise ValueError("JSON content must be valid UTF-8 JSON") from error
+            return json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True)
+        if not media_type.startswith("text/"):
             return None
         try:
             return content.decode("utf-8")
