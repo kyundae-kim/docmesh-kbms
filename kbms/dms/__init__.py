@@ -11,6 +11,7 @@ from .knowledge import (
     TextChunker,
     VectorStore,
 )
+from .pipeline import PipelineBase, PipelineState, PipelineStateRepository
 from .retrieval import KnowledgeSearchService, SearchHit
 from .vectors import MilvusVectorStore
 
@@ -29,6 +30,9 @@ __all__ = [
     "KnowledgeSearchService",
     "MilvusVectorStore",
     "OllamaEmbeddingProvider",
+    "PipelineBase",
+    "PipelineState",
+    "PipelineStateRepository",
     "SearchHit",
     "TextChunk",
     "TextChunker",

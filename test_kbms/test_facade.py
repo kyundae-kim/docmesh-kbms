@@ -228,3 +228,25 @@ def test_facade_installs_host_access_policy_in_dms_client(monkeypatch) -> None:
         )
 
     assert captured["access_policy"] is policy
+
+
+def test_facade_tracks_upload_pipeline_status(monkeypatch) -> None:
+    engine = create_engine("sqlite:///:memory:")
+    dms = FakeDms()
+    monkeypatch.setattr("kbms.facade._build_dms_client", lambda **kwargs: dms)
+
+    with Session(engine):
+        facade = KnowledgeManagement(
+            engine=engine, minio_client=object(),
+            bucket_name="test-bucket", ollama_client=FakeOllama(),
+            milvus_client=FakeMilvus(), vector_dimension=1,
+        )
+        facade.upload_document(
+            content=b"hello", filename="hello.txt", content_type="text/plain",
+            title="Hello", source_uri="test://hello", owner_id="user-1",
+            document_id="doc-1", partition_kind="personal", partition_id="user-1",
+        )
+        status = facade.get_pipeline_status("doc-1")
+
+    assert status.status == "indexed"
+    assert status.document_id == "doc-1"

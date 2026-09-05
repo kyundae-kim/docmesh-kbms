@@ -1,20 +1,20 @@
 from __future__ import annotations
 
 from typing import Any
-from pymilvus import MilvusClient
-from sqlalchemy.engine import Engine
-from minio import Minio
-from ollama import Client
 
 from dms import (
-    AccessPolicy,
     AccessContext,
+    AccessPolicy,
     DocumentContent,
     DocumentManagementSDKFactory,
     DocumentPartition,
     PartitionKind,
     UploadDocumentResult,
 )
+from minio import Minio
+from ollama import Client
+from pymilvus import MilvusClient
+from sqlalchemy.engine import Engine
 
 from .dms import (
     DmsCoreDocumentManager,
@@ -25,6 +25,9 @@ from .dms import (
     KnowledgeSearchService,
     MilvusVectorStore,
     OllamaEmbeddingProvider,
+    PipelineBase,
+    PipelineState,
+    PipelineStateRepository,
     SearchHit,
     TextChunker,
 )
@@ -75,6 +78,7 @@ class KnowledgeManagement:
         chunk_size: int = 1000,
         overlap: int = 100,
     ) -> None:
+        PipelineBase.metadata.create_all(engine)
         dms_client = _build_dms_client(
             engine=engine,
             minio_client=minio_client,
@@ -92,6 +96,7 @@ class KnowledgeManagement:
         )
         self._dms = DmsCoreDocumentManager(dms_client)
         self._ingestion = DocumentIngestionService(indexer)
+        self._pipeline = PipelineStateRepository(engine)
         self._search = KnowledgeSearchService(embedding_provider, vector_store)
 
     def upload_document(
@@ -125,13 +130,25 @@ class KnowledgeManagement:
             metadata=metadata,
             access_context=access_context,
         )
+        self._pipeline.set(result.document_id, status="uploaded")
         try:
-            self._ingestion.ingest(
+            self._pipeline.set(result.document_id, status="indexing")
+            ingestion = self._ingestion.ingest(
                 document_id=result.document_id,
                 content_type=content_type,
                 content=content,
             )
+            self._pipeline.set(
+                result.document_id,
+                status="indexed",
+                chunks_count=len(ingestion.chunks),
+            )
         except Exception:
+            self._pipeline.set(
+                result.document_id,
+                status="failed",
+                error="knowledgeization failed",
+            )
             self._dms.delete(
                 result.document_id,
                 partition=partition,
@@ -140,6 +157,11 @@ class KnowledgeManagement:
             )
             raise
         return result
+
+    def get_pipeline_status(self, document_id: str) -> PipelineState | None:
+        if not document_id.strip():
+            raise ValueError("document_id must not be blank")
+        return self._pipeline.get(document_id)
 
     def list_documents(
         self,

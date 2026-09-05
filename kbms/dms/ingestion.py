@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Protocol
 
 from .knowledge import TextChunk
@@ -7,6 +8,12 @@ from .knowledge import TextChunk
 
 class DocumentIndexer(Protocol):
     def index(self, document_id: str, text: str) -> list[TextChunk]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class IngestionResult:
+    text: str | None
+    chunks: list[TextChunk]
 
 
 class DocumentIngestionService:
@@ -21,15 +28,14 @@ class DocumentIngestionService:
         document_id: str,
         content_type: str,
         content: bytes,
-    ) -> str | None:
+    ) -> IngestionResult:
         if not document_id.strip():
             raise ValueError("document_id must not be blank")
         if not content:
             raise ValueError("content must not be empty")
         text = self._extract_text(content_type, content)
-        if text is not None:
-            self.indexer.index(document_id, text)
-        return text
+        chunks = [] if text is None else self.indexer.index(document_id, text)
+        return IngestionResult(text=text, chunks=chunks)
 
     @staticmethod
     def _extract_text(content_type: str, content: bytes) -> str | None:
