@@ -1,7 +1,7 @@
 [project]
 name = "docmesh-kbms"
 version = "0.1.0"
-description = "Add your description here"
+description = "Document knowledge management system that extracts, chunks, and embeds documents for semantic search with dms-core, Ollama, and Milvus"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
