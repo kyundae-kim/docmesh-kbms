@@ -13,9 +13,14 @@
 - Vector store: Milvus
 - Embedding provider: Ollama
 
-`KnowledgeManagement.upload_document()`은 dms-core에 원본 문서와 메타데이터를 저장한 뒤,
+`KnowledgeManagement`의 문서 작업은 모두 async API이며 `await`로 호출한다.
+`upload_document()`은 dms-core에 원본 문서와 메타데이터를 저장한 뒤,
 텍스트 문서만 추출·chunking하여 Ollama/Milvus로 지식화한다. SQLAlchemy engine과
 dms-core, Ollama, Milvus client의 생성·종료 및 commit/rollback은 host가 맡는다.
+비동기 경로를 사용하려면 `AsyncEngine`(`sqlite+aiosqlite` 또는 async PostgreSQL),
+Ollama `AsyncClient`, pymilvus `AsyncMilvusClient`를 주입한다. 이 경우
+dms-core의 `AsyncDocumentManagementSDK`와 async SQLAlchemy/Milvus 호출을 사용하며,
+동기 클라이언트를 주입하면 기존 호환 경로를 사용한다.
 host 권한 정책은 생성자에 `access_policy`로 주입하고, 각 문서 작업에는 dms-core의
 `AccessContext`를 전달해 사용자·그룹 권한을 적용한다.
 

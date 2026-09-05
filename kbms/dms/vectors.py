@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import ClassVar
 
-from pymilvus import MilvusClient
+from pymilvus import AsyncMilvusClient, MilvusClient
 
 
 class MilvusVectorStore:
@@ -14,7 +14,7 @@ class MilvusVectorStore:
         "partition_kind", "partition_id",
     )
 
-    def __init__(self, client: MilvusClient, *, collection_name: str, dimension: int) -> None:
+    def __init__(self, client: MilvusClient | AsyncMilvusClient, *, collection_name: str, dimension: int) -> None:
         if not collection_name.strip():
             raise ValueError("collection_name must not be blank")
         if dimension <= 0:
@@ -80,6 +80,62 @@ class MilvusVectorStore:
             return {"delete_count": 0}
         escaped_id = document_id.replace("\\", "\\\\").replace('"', '\\"')
         return self.client.delete(
+            collection_name=self.collection_name,
+            filter=f'document_id == "{escaped_id}"',
+        )
+
+    async def aupsert(self, rows: Sequence[dict[str, object]]) -> object:
+        if not rows:
+            return {"insert_count": 0}
+        await self.aensure_collection()
+        return await self.client.insert(
+            collection_name=self.collection_name,
+            data=list(rows),
+        )
+
+    async def aensure_collection(self) -> None:
+        if await self.client.has_collection(collection_name=self.collection_name):
+            return
+        await self.client.create_collection(
+            collection_name=self.collection_name,
+            dimension=self.dimension,
+            primary_field_name="id",
+            id_type="str",
+            max_length=512,
+            vector_field_name="vector",
+            metric_type="COSINE",
+            auto_id=False,
+            consistency_level="Strong",
+        )
+
+    async def asearch(self, vector: Sequence[float], **kwargs: object) -> list[list[dict[str, object]]]:
+        if not vector:
+            raise ValueError("vector must not be empty")
+        limit = kwargs.pop("limit", 5)
+        if limit <= 0:
+            raise ValueError("limit must be positive")
+        await self.aensure_collection()
+        filters = []
+        for field in ("document_id", "partition_kind", "partition_id"):
+            value = kwargs.get(field)
+            if value is not None:
+                escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+                filters.append(f'{field} == "{escaped}"')
+        return await self.client.search(
+            collection_name=self.collection_name,
+            data=[list(vector)],
+            filter=" and ".join(filters),
+            limit=limit,
+            output_fields=list(self._OUTPUT_FIELDS),
+        )
+
+    async def adelete_document(self, document_id: str) -> object:
+        if not document_id.strip():
+            raise ValueError("document_id must not be blank")
+        if not await self.client.has_collection(collection_name=self.collection_name):
+            return {"delete_count": 0}
+        escaped_id = document_id.replace("\\", "\\\\").replace('"', '\\"')
+        return await self.client.delete(
             collection_name=self.collection_name,
             filter=f'document_id == "{escaped_id}"',
         )

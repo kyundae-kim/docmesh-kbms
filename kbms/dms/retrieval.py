@@ -48,6 +48,31 @@ class KnowledgeSearchService:
             return []
         return [self._to_hit(item) for item in batches[0]]
 
+    async def asearch(
+        self,
+        query: str,
+        *,
+        limit: int = 5,
+        document_id: str | None = None,
+        partition_kind: str | None = None,
+        partition_id: str | None = None,
+    ) -> list[SearchHit]:
+        if not isinstance(query, str) or not query.strip():
+            raise ValueError("query must not be blank")
+        if limit <= 0:
+            raise ValueError("limit must be positive")
+        vector = await self.embedding_provider.aembed(query)
+        batches = await self.vector_store.asearch(
+            vector,
+            limit=limit,
+            document_id=document_id,
+            partition_kind=partition_kind,
+            partition_id=partition_id,
+        )
+        if not batches:
+            return []
+        return [self._to_hit(item) for item in batches[0]]
+
     @staticmethod
     def _to_hit(item: Any) -> SearchHit:
         entity = item.get("entity", {}) if isinstance(item, dict) else getattr(item, "entity", {})

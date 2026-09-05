@@ -157,3 +157,69 @@ class DmsCoreDocumentManager:
             hard_delete=hard_delete,
             access_context=access_context,
         )
+
+    async def aupload(self, **kwargs: object) -> UploadDocumentResult:
+        self._validate_upload_kwargs(kwargs)
+        request = UploadDocumentRequest(
+            content=kwargs["content"],
+            filename=kwargs["filename"],
+            content_type=kwargs["content_type"],
+            document_id=kwargs.get("document_id"),
+            created_by=kwargs.get("created_by"),
+            metadata=kwargs.get("metadata"),
+            checksum=hashlib.sha256(kwargs["content"]).hexdigest(),
+        )
+        return await self.client.upload_document(
+            request,
+            partition=kwargs["partition"],
+            access_context=kwargs.get("access_context"),
+        )
+
+    async def alist(self, **kwargs: object) -> DocumentPage:
+        limit = kwargs.get("limit", 100)
+        if limit <= 0:
+            raise ValueError("limit must be positive")
+        return await self.client.list_documents(
+            partition=kwargs["partition"],
+            cursor=kwargs.get("cursor"),
+            limit=limit,
+            access_context=kwargs.get("access_context"),
+        )
+
+    async def ametadata(self, document_id: str, **kwargs: object) -> PublicDocumentMetadata:
+        if not document_id.strip():
+            raise ValueError("document_id must not be blank")
+        return await self.client.get_document_metadata(
+            document_id,
+            partition=kwargs["partition"],
+            access_context=kwargs.get("access_context"),
+        )
+
+    async def aread(self, document_id: str, **kwargs: object) -> DocumentContent:
+        if not document_id.strip():
+            raise ValueError("document_id must not be blank")
+        return await self.client.get_document_content(
+            document_id,
+            partition=kwargs["partition"],
+            access_context=kwargs.get("access_context"),
+        )
+
+    async def adelete(self, document_id: str, **kwargs: object) -> object:
+        if not document_id.strip():
+            raise ValueError("document_id must not be blank")
+        return await self.client.delete_document(
+            document_id,
+            partition=kwargs["partition"],
+            hard_delete=kwargs.get("hard_delete", False),
+            access_context=kwargs.get("access_context"),
+        )
+
+    @staticmethod
+    def _validate_upload_kwargs(kwargs: dict[str, object]) -> None:
+        content = kwargs["content"]
+        if not content:
+            raise ValueError("content must not be empty")
+        if not kwargs["filename"].strip():
+            raise ValueError("filename must not be blank")
+        if not kwargs["content_type"].strip():
+            raise ValueError("content_type must not be blank")

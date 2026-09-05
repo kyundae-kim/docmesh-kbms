@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, Integer, String, Text
 from sqlalchemy.engine import Engine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 
@@ -36,8 +37,38 @@ class PipelineState:
 class PipelineStateRepository:
     """Engine-backed projection for knowledgeization progress."""
 
-    def __init__(self, engine: Engine) -> None:
+    def __init__(self, engine: Engine | AsyncEngine) -> None:
         self.engine = engine
+
+    async def initialize(self) -> None:
+        async with self.engine.begin() as connection:
+            await connection.run_sync(PipelineBase.metadata.create_all)
+
+    async def aset(
+        self,
+        document_id: str,
+        *,
+        status: str,
+        chunks_count: int = 0,
+        error: str | None = None,
+    ) -> PipelineState:
+        async with AsyncSession(self.engine) as session:
+            record = await session.get(PipelineStateRecord, document_id)
+            if record is None:
+                record = PipelineStateRecord(document_id=document_id, status=status)
+                session.add(record)
+            record.status = status
+            record.chunks_count = chunks_count
+            record.error = error
+            record.updated_at = datetime.now(UTC)
+            await session.commit()
+            await session.refresh(record)
+            return self._to_state(record)
+
+    async def aget(self, document_id: str) -> PipelineState | None:
+        async with AsyncSession(self.engine) as session:
+            record = await session.get(PipelineStateRecord, document_id)
+            return None if record is None else self._to_state(record)
 
     def set(
         self,

@@ -29,7 +29,7 @@ def real_service_config() -> dict[str, str]:
     }
 
 
-def _exercise_facade(
+async def _exercise_facade(
     *,
     engine: Engine,
     milvus: MilvusClient,
@@ -59,7 +59,7 @@ def _exercise_facade(
                 chunk_size=128,
                 overlap=16,
             )
-            result = facade.upload_document(
+            result = await facade.upload_document(
                 content=(
                     b"Knowledge management systems organize searchable "
                     b"document knowledge."
@@ -76,8 +76,8 @@ def _exercise_facade(
             )
             session.commit()
 
-            hits = facade.search("searchable document knowledge", limit=1)
-            content = facade.get_document_content(
+            hits = await facade.search("searchable document knowledge", limit=1)
+            content = await facade.get_document_content(
                 document_id,
                 partition_kind=partition_kind,
                 partition_id=partition_id,
@@ -86,7 +86,7 @@ def _exercise_facade(
             assert hits and hits[0].document_id == document_id
             assert content.content.startswith(b"Knowledge management")
 
-            facade.delete_document(
+            await facade.delete_document(
                 document_id,
                 partition_kind=partition_kind,
                 partition_id=partition_id,
@@ -100,9 +100,10 @@ def _exercise_facade(
 
 @pytest.mark.integration
 @pytest.mark.real_integration
+@pytest.mark.asyncio
 @pytest.mark.parametrize("database_kind", ["memory", "disk", "postgres"])
 @pytest.mark.parametrize("milvus_kind", ["local", "server"])
-def test_real_facade_supports_database_and_milvus_access_modes(
+async def test_real_facade_supports_database_and_milvus_access_modes(
     database_kind: str,
     milvus_kind: str,
     tmp_path: Path,
@@ -126,7 +127,7 @@ def test_real_facade_supports_database_and_milvus_access_modes(
     engine = create_engine(database_uri)
     milvus = MilvusClient(uri=milvus_uri)
     try:
-        _exercise_facade(
+        await _exercise_facade(
             engine=engine,
             milvus=milvus,
             config=real_service_config,

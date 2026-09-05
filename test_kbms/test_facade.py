@@ -1,5 +1,7 @@
+import inspect
 from datetime import UTC, datetime
 
+import pytest
 from dms import (
     AccessContext,
     DocumentContent,
@@ -94,7 +96,13 @@ def test_package_exposes_one_public_facade() -> None:
     assert KnowledgeManagement.__name__ == "KnowledgeManagement"
 
 
-def test_facade_composes_dms_persistence_indexing_and_search(monkeypatch) -> None:
+def test_facade_document_operations_are_async() -> None:
+    assert inspect.iscoroutinefunction(KnowledgeManagement.upload_document)
+    assert inspect.iscoroutinefunction(KnowledgeManagement.search)
+
+
+@pytest.mark.asyncio
+async def test_facade_composes_dms_persistence_indexing_and_search(monkeypatch) -> None:
     engine = create_engine("sqlite:///:memory:")
     dms = FakeDms()
     vectors = FakeMilvus()
@@ -113,7 +121,7 @@ def test_facade_composes_dms_persistence_indexing_and_search(monkeypatch) -> Non
             chunk_size=4,
             overlap=1,
         )
-        result = facade.upload_document(
+        result = await facade.upload_document(
             content=b"hello",
             filename="hello.txt",
             content_type="text/plain",
@@ -132,14 +140,15 @@ def test_facade_composes_dms_persistence_indexing_and_search(monkeypatch) -> Non
             "source_uri": "test://hello",
         }
         assert len(vectors.rows) == 2
-        assert facade.get_document_content(
+        assert (await facade.get_document_content(
             "doc-1",
             partition_kind=partition_kind,
             partition_id=partition_id,
-        ).content == b"hello"
+        )).content == b"hello"
 
 
-def test_facade_deletes_via_dms_core(monkeypatch) -> None:
+@pytest.mark.asyncio
+async def test_facade_deletes_via_dms_core(monkeypatch) -> None:
     engine = create_engine("sqlite:///:memory:")
     dms = FakeDms()
     vectors = FakeMilvus()
@@ -156,7 +165,7 @@ def test_facade_deletes_via_dms_core(monkeypatch) -> None:
             milvus_client=vectors,
             vector_dimension=1,
         )
-        facade.delete_document(
+        await facade.delete_document(
             "doc-1",
             partition_kind=partition_kind,
             partition_id=partition_id,
@@ -171,7 +180,8 @@ def test_facade_deletes_via_dms_core(monkeypatch) -> None:
     assert vectors.deleted == ['document_id == "doc-1"']
 
 
-def test_facade_exposes_kms_document_metadata_and_cursor_page(monkeypatch) -> None:
+@pytest.mark.asyncio
+async def test_facade_exposes_kms_document_metadata_and_cursor_page(monkeypatch) -> None:
     engine = create_engine("sqlite:///:memory:")
     dms = FakeDms()
     monkeypatch.setattr("kbms.facade._build_dms_client", lambda **kwargs: dms)
@@ -185,13 +195,13 @@ def test_facade_exposes_kms_document_metadata_and_cursor_page(monkeypatch) -> No
             milvus_client=FakeMilvus(),
             vector_dimension=1,
         )
-        page = facade.list_documents(
+        page = await facade.list_documents(
             partition_kind="personal",
             partition_id="user-1",
             cursor="old",
             limit=10,
         )
-        document = facade.get_document_metadata(
+        document = await facade.get_document_metadata(
             "doc-1",
             partition_kind="personal",
             partition_id="user-1",
@@ -205,7 +215,8 @@ def test_facade_exposes_kms_document_metadata_and_cursor_page(monkeypatch) -> No
     assert document.partition_id == "user-1"
 
 
-def test_facade_accepts_user_and_group_access_context(monkeypatch) -> None:
+@pytest.mark.asyncio
+async def test_facade_accepts_user_and_group_access_context(monkeypatch) -> None:
     engine = create_engine("sqlite:///:memory:")
     dms = FakeDms()
     monkeypatch.setattr("kbms.facade._build_dms_client", lambda **kwargs: dms)
@@ -217,7 +228,7 @@ def test_facade_accepts_user_and_group_access_context(monkeypatch) -> None:
             bucket_name="test-bucket", ollama_client=FakeOllama(),
             milvus_client=FakeMilvus(), vector_dimension=1,
         )
-        facade.get_document_content(
+        await facade.get_document_content(
             "doc-1", partition_kind="group", partition_id="group-1",
             access_context=context,
         )
@@ -225,7 +236,8 @@ def test_facade_accepts_user_and_group_access_context(monkeypatch) -> None:
     assert dms.reads[-1][2] is context
 
 
-def test_facade_restricts_search_to_authorized_partition(monkeypatch) -> None:
+@pytest.mark.asyncio
+async def test_facade_restricts_search_to_authorized_partition(monkeypatch) -> None:
     engine = create_engine("sqlite:///:memory:")
     dms = FakeDms()
     monkeypatch.setattr("kbms.facade._build_dms_client", lambda **kwargs: dms)
@@ -237,7 +249,7 @@ def test_facade_restricts_search_to_authorized_partition(monkeypatch) -> None:
             ollama_client=FakeOllama(), milvus_client=FakeMilvus(), vector_dimension=1,
         )
         try:
-            facade.search(
+            await facade.search(
                 "query", partition_kind="group", partition_id="group-2",
                 access_context=context,
             )
@@ -267,7 +279,8 @@ def test_facade_installs_host_access_policy_in_dms_client(monkeypatch) -> None:
     assert captured["access_policy"] is policy
 
 
-def test_facade_tracks_upload_pipeline_status(monkeypatch) -> None:
+@pytest.mark.asyncio
+async def test_facade_tracks_upload_pipeline_status(monkeypatch) -> None:
     engine = create_engine("sqlite:///:memory:")
     dms = FakeDms()
     monkeypatch.setattr("kbms.facade._build_dms_client", lambda **kwargs: dms)
@@ -278,12 +291,12 @@ def test_facade_tracks_upload_pipeline_status(monkeypatch) -> None:
             bucket_name="test-bucket", ollama_client=FakeOllama(),
             milvus_client=FakeMilvus(), vector_dimension=1,
         )
-        facade.upload_document(
+        await facade.upload_document(
             content=b"hello", filename="hello.txt", content_type="text/plain",
             title="Hello", source_uri="test://hello", owner_id="user-1",
             document_id="doc-1", partition_kind="personal", partition_id="user-1",
         )
-        status = facade.get_pipeline_status("doc-1")
+        status = await facade.get_pipeline_status("doc-1")
 
     assert status.status == "indexed"
     assert status.document_id == "doc-1"
