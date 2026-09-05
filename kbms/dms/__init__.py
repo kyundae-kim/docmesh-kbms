@@ -11,20 +11,17 @@ from .knowledge import (
     TextChunker,
     VectorStore,
 )
-from .models import Base, Document, DocumentContent
-from .repository import DocumentRepository
 from .retrieval import KnowledgeSearchService, SearchHit
 from .vectors import MilvusVectorStore
 
 __all__ = [
-    "Base",
+
     "DmsCoreClient",
     "DmsCoreDocumentManager",
-    "Document",
-    "DocumentContent",
+
     "DocumentIndexer",
     "DocumentIngestionService",
-    "DocumentRepository",
+
     "EmbeddingProvider",
     "KnowledgeDocument",
     "KnowledgeDocumentPage",

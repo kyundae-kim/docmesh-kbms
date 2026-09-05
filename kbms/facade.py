@@ -10,12 +10,10 @@ from dms import (
     PartitionKind,
     UploadDocumentResult,
 )
-from sqlalchemy.orm import Session
 
 from .dms import (
     DmsCoreDocumentManager,
     DocumentIngestionService,
-    DocumentRepository,
     KnowledgeDocument,
     KnowledgeDocumentPage,
     KnowledgeIndexer,
@@ -60,7 +58,6 @@ class KnowledgeManagement:
     def __init__(
         self,
         *,
-        session: Session,
         engine: Any,
         minio_client: Any,
         bucket_name: str,
@@ -85,12 +82,11 @@ class KnowledgeManagement:
             collection_name=collection_name,
             dimension=vector_dimension,
         )
-        repository = DocumentRepository(session)
         indexer = KnowledgeIndexer(
             TextChunker(chunk_size, overlap), embedding_provider, vector_store
         )
         self._dms = DmsCoreDocumentManager(dms_client)
-        self._ingestion = DocumentIngestionService(repository, indexer)
+        self._ingestion = DocumentIngestionService(indexer)
         self._search = KnowledgeSearchService(embedding_provider, vector_store)
 
     def upload_document(
@@ -120,17 +116,14 @@ class KnowledgeManagement:
             content_type=content_type,
             partition=partition,
             document_id=document_id,
-            created_by=created_by,
+            created_by=created_by or owner_id,
             metadata=metadata,
             access_context=access_context,
         )
         try:
             self._ingestion.ingest(
                 document_id=result.document_id,
-                title=title,
-                source_uri=source_uri,
                 content_type=content_type,
-                owner_id=owner_id,
                 content=content,
             )
         except Exception:

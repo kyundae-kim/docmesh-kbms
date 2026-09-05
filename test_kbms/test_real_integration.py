@@ -13,7 +13,6 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from kbms import KnowledgeManagement
-from kbms.dms.models import Base
 
 
 @pytest.fixture
@@ -44,7 +43,6 @@ def _exercise_facade(
     try:
         with Session(engine) as session:
             facade = KnowledgeManagement(
-                session=session,
                 engine=engine,
                 minio_client=Minio(
                     config["minio_endpoint"],
@@ -128,7 +126,6 @@ def test_real_facade_supports_database_and_milvus_access_modes(
     engine = create_engine(database_uri)
     milvus = MilvusClient(uri=milvus_uri)
     try:
-        Base.metadata.create_all(engine)
         _exercise_facade(
             engine=engine,
             milvus=milvus,

@@ -13,8 +13,6 @@ from sqlalchemy.orm import Session
 
 import kbms
 from kbms import KnowledgeManagement
-from kbms.dms.models import Base
-from kbms.dms.repository import DocumentRepository
 
 
 class FakeDms:
@@ -89,16 +87,14 @@ def test_package_exposes_one_public_facade() -> None:
 
 def test_facade_composes_dms_persistence_indexing_and_search(monkeypatch) -> None:
     engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
     dms = FakeDms()
     vectors = FakeMilvus()
     monkeypatch.setattr("kbms.facade._build_dms_client", lambda **kwargs: dms)
     partition_kind = "personal"
     partition_id = "user-1"
 
-    with Session(engine) as session:
+    with Session(engine):
         facade = KnowledgeManagement(
-            session=session,
             engine=engine,
             minio_client=object(),
             bucket_name="test-bucket",
@@ -119,11 +115,10 @@ def test_facade_composes_dms_persistence_indexing_and_search(monkeypatch) -> Non
             partition_kind=partition_kind,
             partition_id=partition_id,
         )
-        session.commit()
 
         assert result.document_id == "doc-1"
+        assert dms.uploads[0][0].created_by == "user-1"
         assert len(vectors.rows) == 2
-        assert DocumentRepository(session).get("doc-1") is not None
         assert facade.get_document_content(
             "doc-1",
             partition_kind=partition_kind,
@@ -133,15 +128,13 @@ def test_facade_composes_dms_persistence_indexing_and_search(monkeypatch) -> Non
 
 def test_facade_deletes_via_dms_core(monkeypatch) -> None:
     engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
     dms = FakeDms()
     monkeypatch.setattr("kbms.facade._build_dms_client", lambda **kwargs: dms)
     partition_kind = "personal"
     partition_id = "user-1"
 
-    with Session(engine) as session:
+    with Session(engine):
         facade = KnowledgeManagement(
-            session=session,
             engine=engine,
             minio_client=object(),
             bucket_name="test-bucket",
@@ -165,13 +158,11 @@ def test_facade_deletes_via_dms_core(monkeypatch) -> None:
 
 def test_facade_exposes_kms_document_metadata_and_cursor_page(monkeypatch) -> None:
     engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
     dms = FakeDms()
     monkeypatch.setattr("kbms.facade._build_dms_client", lambda **kwargs: dms)
 
-    with Session(engine) as session:
+    with Session(engine):
         facade = KnowledgeManagement(
-            session=session,
             engine=engine,
             minio_client=object(),
             bucket_name="test-bucket",
@@ -201,14 +192,13 @@ def test_facade_exposes_kms_document_metadata_and_cursor_page(monkeypatch) -> No
 
 def test_facade_accepts_user_and_group_access_context(monkeypatch) -> None:
     engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
     dms = FakeDms()
     monkeypatch.setattr("kbms.facade._build_dms_client", lambda **kwargs: dms)
     context = AccessContext(user_id="user-1", groups=frozenset({"group-1"}))
 
-    with Session(engine) as session:
+    with Session(engine):
         facade = KnowledgeManagement(
-            session=session, engine=engine, minio_client=object(),
+            engine=engine, minio_client=object(),
             bucket_name="test-bucket", ollama_client=FakeOllama(),
             milvus_client=FakeMilvus(), vector_dimension=1,
         )
@@ -222,7 +212,6 @@ def test_facade_accepts_user_and_group_access_context(monkeypatch) -> None:
 
 def test_facade_installs_host_access_policy_in_dms_client(monkeypatch) -> None:
     engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
     captured = {}
     dms = FakeDms()
     monkeypatch.setattr(
@@ -231,9 +220,9 @@ def test_facade_installs_host_access_policy_in_dms_client(monkeypatch) -> None:
     )
     policy = object()
 
-    with Session(engine) as session:
+    with Session(engine):
         KnowledgeManagement(
-            session=session, engine=engine, minio_client=object(),
+            engine=engine, minio_client=object(),
             bucket_name="test-bucket", ollama_client=FakeOllama(),
             milvus_client=FakeMilvus(), access_policy=policy,
         )

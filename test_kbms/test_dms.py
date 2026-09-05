@@ -1,56 +1,7 @@
-from datetime import UTC, datetime
-
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
 
 from kbms.dms.embedding import OllamaEmbeddingProvider
 from kbms.dms.knowledge import TextChunker
-from kbms.dms.models import Base
-from kbms.dms.repository import DocumentRepository
-
-
-def repository() -> tuple[object, Session, DocumentRepository]:
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    session = Session(engine)
-    return engine, session, DocumentRepository(session)
-
-
-def test_document_repository_crud_and_knowledge_text() -> None:
-    _, session, repo = repository()
-    try:
-        created = repo.create(
-            document_id="doc-001", title="Architecture notes", source_uri="file:///notes.md",
-            content_type="text/markdown", content_hash="hash-001", owner_id="user-001",
-        )
-        assert repo.save_content("doc-001", b"# Architecture") is not None
-        assert repo.update_extracted_text("doc-001", "Architecture uses SQLAlchemy.")
-        session.commit()
-        loaded = repo.get("doc-001")
-        assert loaded is not None
-        assert loaded.id == created.id == "doc-001"
-        assert loaded.extracted_text == "Architecture uses SQLAlchemy."
-        assert repo.get_content("doc-001") == b"# Architecture"
-    finally:
-        session.close()
-
-
-def test_repository_lists_owner_newest_first_and_missing_is_safe() -> None:
-    _, session, repo = repository()
-    try:
-        for identifier, day, owner in [("old", 1, "u"), ("new", 2, "u"), ("other", 3, "v")]:
-            repo.create(
-                document_id=identifier, title=identifier, source_uri="uri", content_type="text/plain",
-                content_hash=identifier, owner_id=owner, created_at=datetime(2026, 1, day, tzinfo=UTC),
-            )
-        session.commit()
-        assert [doc.id for doc in repo.list("u")] == ["new", "old"]
-        assert repo.get("missing") is None
-        assert repo.get_content("missing") is None
-        assert repo.update_extracted_text("missing", "text") is False
-    finally:
-        session.close()
 
 
 def test_chunker_preserves_identity_and_overlap() -> None:
