@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 from typing import Any
+from pymilvus import MilvusClient
+from sqlalchemy.engine import Engine
+from minio import Minio
+from ollama import Client
 
 from dms import (
+    AccessPolicy,
     AccessContext,
     DocumentContent,
     DocumentManagementSDKFactory,
@@ -27,8 +32,8 @@ from .dms import (
 
 def _build_dms_client(
     *,
-    engine: Any,
-    minio_client: Any,
+    engine: Engine,
+    minio_client: Minio,
     bucket_name: str,
     access_policy: Any = None,
 ) -> Any:
@@ -58,12 +63,12 @@ class KnowledgeManagement:
     def __init__(
         self,
         *,
-        engine: Any,
-        minio_client: Any,
+        engine: Engine,
+        minio_client: Minio,
         bucket_name: str,
-        ollama_client: Any,
-        milvus_client: Any,
-        access_policy: Any = None,
+        ollama_client: Client,
+        milvus_client: MilvusClient,
+        access_policy: AccessPolicy | None = None,
         embedding_model: str = "bge-m3",
         collection_name: str = "kbms_documents",
         vector_dimension: int = 1024,
