@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any, ClassVar
+from typing import ClassVar
+from pymilvus import MilvusClient
 
 
 class MilvusVectorStore:
@@ -11,7 +12,7 @@ class MilvusVectorStore:
         "id", "document_id", "chunk_index", "text", "start", "end"
     )
 
-    def __init__(self, client: Any, *, collection_name: str, dimension: int) -> None:
+    def __init__(self, client: MilvusClient, *, collection_name: str, dimension: int) -> None:
         if not collection_name.strip():
             raise ValueError("collection_name must not be blank")
         if dimension <= 0:
