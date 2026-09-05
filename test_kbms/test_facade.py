@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 
 from dms import (
+    AccessContext,
     DocumentContent,
     DocumentPage,
     DocumentStatus,
@@ -20,12 +21,14 @@ class FakeDms:
     def __init__(self) -> None:
         self.uploads = []
         self.deletes = []
+        self.reads = []
 
-    def upload_document(self, request, *, partition):
-        self.uploads.append((request, partition))
+    def upload_document(self, request, *, partition, access_context=None):
+        self.uploads.append((request, partition, access_context))
         return UploadDocumentResult(document_id=request.document_id or "generated", metadata=None)
 
-    def get_document_content(self, document_id, *, partition):
+    def get_document_content(self, document_id, *, partition, access_context=None):
+        self.reads.append((document_id, partition, access_context))
         return DocumentContent(
             document_id=document_id,
             content=b"hello",
@@ -34,8 +37,8 @@ class FakeDms:
             size=5,
         )
 
-    def delete_document(self, document_id, *, partition, hard_delete=False):
-        self.deletes.append((document_id, partition, hard_delete))
+    def delete_document(self, document_id, *, partition, hard_delete=False, access_context=None):
+        self.deletes.append((document_id, partition, hard_delete, access_context))
         return {"document_id": document_id}
 
     def _metadata(self, partition):
@@ -194,3 +197,45 @@ def test_facade_exposes_kms_document_metadata_and_cursor_page(monkeypatch) -> No
     assert page.has_more is True
     assert document.status == "available"
     assert document.partition_id == "user-1"
+
+
+def test_facade_accepts_user_and_group_access_context(monkeypatch) -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    dms = FakeDms()
+    monkeypatch.setattr("kbms.facade._build_dms_client", lambda **kwargs: dms)
+    context = AccessContext(user_id="user-1", groups=frozenset({"group-1"}))
+
+    with Session(engine) as session:
+        facade = KnowledgeManagement(
+            session=session, engine=engine, minio_client=object(),
+            bucket_name="test-bucket", ollama_client=FakeOllama(),
+            milvus_client=FakeMilvus(), vector_dimension=1,
+        )
+        facade.get_document_content(
+            "doc-1", partition_kind="group", partition_id="group-1",
+            access_context=context,
+        )
+
+    assert dms.reads[-1][2] is context
+
+
+def test_facade_installs_host_access_policy_in_dms_client(monkeypatch) -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    captured = {}
+    dms = FakeDms()
+    monkeypatch.setattr(
+        "kbms.facade._build_dms_client",
+        lambda **kwargs: captured.update(kwargs) or dms,
+    )
+    policy = object()
+
+    with Session(engine) as session:
+        KnowledgeManagement(
+            session=session, engine=engine, minio_client=object(),
+            bucket_name="test-bucket", ollama_client=FakeOllama(),
+            milvus_client=FakeMilvus(), access_policy=policy,
+        )
+
+    assert captured["access_policy"] is policy

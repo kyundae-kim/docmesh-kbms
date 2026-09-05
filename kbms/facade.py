@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from dms import (
+    AccessContext,
     DocumentContent,
     DocumentManagementSDKFactory,
     DocumentPartition,
@@ -26,11 +27,18 @@ from .dms import (
 )
 
 
-def _build_dms_client(*, engine: Any, minio_client: Any, bucket_name: str) -> Any:
+def _build_dms_client(
+    *,
+    engine: Any,
+    minio_client: Any,
+    bucket_name: str,
+    access_policy: Any = None,
+) -> Any:
     return DocumentManagementSDKFactory(
         engine=engine,
         minio_client=minio_client,
         bucket_name=bucket_name,
+        access_policy=access_policy,
     ).create()
 
 
@@ -58,6 +66,7 @@ class KnowledgeManagement:
         bucket_name: str,
         ollama_client: Any,
         milvus_client: Any,
+        access_policy: Any = None,
         embedding_model: str = "bge-m3",
         collection_name: str = "kbms_documents",
         vector_dimension: int = 1024,
@@ -68,6 +77,7 @@ class KnowledgeManagement:
             engine=engine,
             minio_client=minio_client,
             bucket_name=bucket_name,
+            access_policy=access_policy,
         )
         embedding_provider = OllamaEmbeddingProvider(ollama_client, embedding_model)
         vector_store = MilvusVectorStore(
@@ -97,6 +107,7 @@ class KnowledgeManagement:
         document_id: str | None = None,
         created_by: str | None = None,
         metadata: dict[str, Any] | None = None,
+        access_context: AccessContext | None = None,
     ) -> UploadDocumentResult:
         """Upload through dms-core, then persist and index its projection."""
         partition = _build_partition(
@@ -111,6 +122,7 @@ class KnowledgeManagement:
             document_id=document_id,
             created_by=created_by,
             metadata=metadata,
+            access_context=access_context,
         )
         try:
             self._ingestion.ingest(
@@ -122,7 +134,12 @@ class KnowledgeManagement:
                 content=content,
             )
         except Exception:
-            self._dms.delete(result.document_id, partition=partition, hard_delete=True)
+            self._dms.delete(
+                result.document_id,
+                partition=partition,
+                hard_delete=True,
+                access_context=access_context,
+            )
             raise
         return result
 
@@ -133,13 +150,19 @@ class KnowledgeManagement:
         partition_id: str,
         cursor: str | None = None,
         limit: int = 100,
+        access_context: AccessContext | None = None,
     ) -> KnowledgeDocumentPage:
         """List documents using a KMS DTO rather than exposing dms-core types."""
         partition = _build_partition(
             partition_kind=partition_kind,
             partition_id=partition_id,
         )
-        page = self._dms.list(partition=partition, cursor=cursor, limit=limit)
+        page = self._dms.list(
+            partition=partition,
+            cursor=cursor,
+            limit=limit,
+            access_context=access_context,
+        )
         return KnowledgeDocumentPage(
             items=[self._to_knowledge_document(item) for item in page.items],
             next_cursor=page.next_cursor,
@@ -152,6 +175,7 @@ class KnowledgeManagement:
         *,
         partition_kind: str,
         partition_id: str,
+        access_context: AccessContext | None = None,
     ) -> KnowledgeDocument:
         """Return public document metadata in the KMS vocabulary."""
         partition = _build_partition(
@@ -159,7 +183,9 @@ class KnowledgeManagement:
             partition_id=partition_id,
         )
         return self._to_knowledge_document(
-            self._dms.metadata(document_id, partition=partition)
+            self._dms.metadata(
+                document_id, partition=partition, access_context=access_context
+            )
         )
 
     def get_document_content(
@@ -168,12 +194,15 @@ class KnowledgeManagement:
         *,
         partition_kind: str,
         partition_id: str,
+        access_context: AccessContext | None = None,
     ) -> DocumentContent:
         partition = _build_partition(
             partition_kind=partition_kind,
             partition_id=partition_id,
         )
-        return self._dms.read(document_id, partition=partition)
+        return self._dms.read(
+            document_id, partition=partition, access_context=access_context
+        )
 
     def delete_document(
         self,
@@ -182,13 +211,17 @@ class KnowledgeManagement:
         partition_kind: str,
         partition_id: str,
         hard_delete: bool = False,
+        access_context: AccessContext | None = None,
     ) -> object:
         partition = _build_partition(
             partition_kind=partition_kind,
             partition_id=partition_id,
         )
         return self._dms.delete(
-            document_id, partition=partition, hard_delete=hard_delete
+            document_id,
+            partition=partition,
+            hard_delete=hard_delete,
+            access_context=access_context,
         )
 
     def search(

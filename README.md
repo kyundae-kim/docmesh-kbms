@@ -16,6 +16,8 @@
 `KnowledgeManagement.upload_document()`은 dms-core 업로드 후 SQLAlchemy projection을
 저장하고, 텍스트 문서만 Ollama/Milvus로 지식화한다. SQLAlchemy `Session`과
 dms-core, Ollama, Milvus client의 생성·종료 및 commit/rollback은 host가 맡는다.
+host 권한 정책은 생성자에 `access_policy`로 주입하고, 각 문서 작업에는 dms-core의
+`AccessContext`를 전달해 사용자·그룹 권한을 적용한다.
 
 ## 검증
 
@@ -24,7 +26,8 @@ uv run pytest -q
 uv run ruff check kbms test_kbms
 ```
 
-SQLite memory/disk 검사는 항상 실행된다. PostgreSQL, Milvus, Ollama 연결 검사는
+SQLite memory/disk와 Milvus local 검사는 항상 실행된다. PostgreSQL, Milvus server,
+Ollama 연결 검사는
 다음 환경변수가 설정된 경우 실행된다.
 
 ```bash

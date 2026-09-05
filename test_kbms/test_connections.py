@@ -39,6 +39,12 @@ def test_sqlite_disk_connection(tmp_path) -> None:
 
 
 @pytest.mark.integration
+def test_milvus_local_connection(tmp_path) -> None:
+    client = MilvusClient(uri=str(tmp_path / "milvus.db"))
+    assert isinstance(client.list_collections(), list)
+
+
+@pytest.mark.integration
 def test_postgres_connection() -> None:
     url = os.getenv(
         "KBMS_POSTGRES_URL",

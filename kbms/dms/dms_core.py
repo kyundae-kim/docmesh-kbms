@@ -4,6 +4,7 @@ import hashlib
 from typing import Protocol
 
 from dms import (
+    AccessContext,
     DocumentContent,
     DocumentManagementClient,
     DocumentPage,
@@ -22,7 +23,7 @@ class DmsCoreClient(Protocol):
         cursor: str | None = None,
         limit: int = 100,
         status: object | None = None,
-        access_context: object | None = None,
+        access_context: AccessContext | None = None,
     ) -> DocumentPage: ...
 
     def get_document_metadata(
@@ -30,7 +31,7 @@ class DmsCoreClient(Protocol):
         document_id: str,
         *,
         partition: DocumentPartition,
-        access_context: object | None = None,
+        access_context: AccessContext | None = None,
     ) -> PublicDocumentMetadata: ...
 
     def upload_document(
@@ -38,6 +39,7 @@ class DmsCoreClient(Protocol):
         request: UploadDocumentRequest,
         *,
         partition: DocumentPartition,
+        access_context: AccessContext | None = None,
     ) -> UploadDocumentResult: ...
 
     def get_document_content(
@@ -45,6 +47,7 @@ class DmsCoreClient(Protocol):
         document_id: str,
         *,
         partition: DocumentPartition,
+        access_context: AccessContext | None = None,
     ) -> DocumentContent: ...
 
     def delete_document(
@@ -53,6 +56,7 @@ class DmsCoreClient(Protocol):
         *,
         partition: DocumentPartition,
         hard_delete: bool = False,
+        access_context: AccessContext | None = None,
     ) -> object: ...
 
 
@@ -72,6 +76,7 @@ class DmsCoreDocumentManager:
         document_id: str | None = None,
         created_by: str | None = None,
         metadata: dict[str, object] | None = None,
+        access_context: AccessContext | None = None,
     ) -> UploadDocumentResult:
         if not content:
             raise ValueError("content must not be empty")
@@ -89,7 +94,9 @@ class DmsCoreDocumentManager:
             metadata=metadata,
             checksum=hashlib.sha256(content).hexdigest(),
         )
-        return self.client.upload_document(request, partition=partition)
+        return self.client.upload_document(
+            request, partition=partition, access_context=access_context
+        )
 
     def list(
         self,
@@ -97,6 +104,7 @@ class DmsCoreDocumentManager:
         partition: DocumentPartition,
         cursor: str | None = None,
         limit: int = 100,
+        access_context: AccessContext | None = None,
     ) -> DocumentPage:
         if limit <= 0:
             raise ValueError("limit must be positive")
@@ -104,6 +112,7 @@ class DmsCoreDocumentManager:
             partition=partition,
             cursor=cursor,
             limit=limit,
+            access_context=access_context,
         )
 
     def metadata(
@@ -111,20 +120,26 @@ class DmsCoreDocumentManager:
         document_id: str,
         *,
         partition: DocumentPartition,
+        access_context: AccessContext | None = None,
     ) -> PublicDocumentMetadata:
         if not document_id.strip():
             raise ValueError("document_id must not be blank")
-        return self.client.get_document_metadata(document_id, partition=partition)
+        return self.client.get_document_metadata(
+            document_id, partition=partition, access_context=access_context
+        )
 
     def read(
         self,
         document_id: str,
         *,
         partition: DocumentPartition,
+        access_context: AccessContext | None = None,
     ) -> DocumentContent:
         if not document_id.strip():
             raise ValueError("document_id must not be blank")
-        return self.client.get_document_content(document_id, partition=partition)
+        return self.client.get_document_content(
+            document_id, partition=partition, access_context=access_context
+        )
 
     def delete(
         self,
@@ -132,6 +147,7 @@ class DmsCoreDocumentManager:
         *,
         partition: DocumentPartition,
         hard_delete: bool = False,
+        access_context: AccessContext | None = None,
     ) -> object:
         if not document_id.strip():
             raise ValueError("document_id must not be blank")
@@ -139,4 +155,5 @@ class DmsCoreDocumentManager:
             document_id,
             partition=partition,
             hard_delete=hard_delete,
+            access_context=access_context,
         )
