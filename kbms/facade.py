@@ -98,6 +98,7 @@ class KnowledgeManagement:
         self._ingestion = DocumentIngestionService(indexer)
         self._pipeline = PipelineStateRepository(engine)
         self._search = KnowledgeSearchService(embedding_provider, vector_store)
+        self._vectors = vector_store
 
     def upload_document(
         self,
@@ -120,6 +121,12 @@ class KnowledgeManagement:
             partition_kind=partition_kind,
             partition_id=partition_id,
         )
+        if not title.strip():
+            raise ValueError("title must not be blank")
+        if not source_uri.strip():
+            raise ValueError("source_uri must not be blank")
+        document_metadata = dict(metadata or {})
+        document_metadata.update({"title": title, "source_uri": source_uri})
         result = self._dms.upload(
             content=content,
             filename=filename,
@@ -127,7 +134,7 @@ class KnowledgeManagement:
             partition=partition,
             document_id=document_id,
             created_by=created_by or owner_id,
-            metadata=metadata,
+            metadata=document_metadata,
             access_context=access_context,
         )
         self._pipeline.set(result.document_id, status="uploaded")
@@ -137,6 +144,9 @@ class KnowledgeManagement:
                 document_id=result.document_id,
                 content_type=content_type,
                 content=content,
+                source_uri=source_uri,
+                partition_kind=partition.kind.value,
+                partition_id=partition.partition_id,
             )
             self._pipeline.set(
                 result.document_id,
@@ -237,12 +247,15 @@ class KnowledgeManagement:
             partition_kind=partition_kind,
             partition_id=partition_id,
         )
-        return self._dms.delete(
+        result = self._dms.delete(
             document_id,
             partition=partition,
             hard_delete=hard_delete,
             access_context=access_context,
         )
+        self._vectors.delete_document(document_id)
+        self._pipeline.set(document_id, status="deleted")
+        return result
 
     def search(
         self,
@@ -250,8 +263,26 @@ class KnowledgeManagement:
         *,
         limit: int = 5,
         document_id: str | None = None,
+        partition_kind: str | None = None,
+        partition_id: str | None = None,
+        access_context: AccessContext | None = None,
     ) -> list[SearchHit]:
-        return self._search.search(query, limit=limit, document_id=document_id)
+        if access_context is not None:
+            if partition_kind is None or partition_id is None:
+                raise ValueError(
+                    "partition_kind and partition_id are required for authorized search"
+                )
+            if partition_kind == "personal" and access_context.user_id != partition_id:
+                raise PermissionError("search access denied")
+            if partition_kind == "group" and partition_id not in access_context.groups:
+                raise PermissionError("search access denied")
+        return self._search.search(
+            query,
+            limit=limit,
+            document_id=document_id,
+            partition_kind=partition_kind,
+            partition_id=partition_id,
+        )
 
     @staticmethod
     def _to_knowledge_document(metadata: Any) -> KnowledgeDocument:

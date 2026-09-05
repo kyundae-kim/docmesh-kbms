@@ -7,7 +7,7 @@ from .knowledge import TextChunk
 
 
 class DocumentIndexer(Protocol):
-    def index(self, document_id: str, text: str) -> list[TextChunk]: ...
+    def index(self, document_id: str, text: str, **kwargs: object) -> list[TextChunk]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,13 +28,27 @@ class DocumentIngestionService:
         document_id: str,
         content_type: str,
         content: bytes,
+        source_uri: str | None = None,
+        partition_kind: str | None = None,
+        partition_id: str | None = None,
     ) -> IngestionResult:
         if not document_id.strip():
             raise ValueError("document_id must not be blank")
         if not content:
             raise ValueError("content must not be empty")
         text = self._extract_text(content_type, content)
-        chunks = [] if text is None else self.indexer.index(document_id, text)
+        if text is None:
+            chunks = []
+        elif any(value is not None for value in (source_uri, partition_kind, partition_id)):
+            chunks = self.indexer.index(
+                document_id,
+                text,
+                source_uri=source_uri,
+                partition_kind=partition_kind,
+                partition_id=partition_id,
+            )
+        else:
+            chunks = self.indexer.index(document_id, text)
         return IngestionResult(text=text, chunks=chunks)
 
     @staticmethod

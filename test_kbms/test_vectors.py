@@ -7,6 +7,7 @@ class FakeMilvusClient:
         self.created = []
         self.inserted = []
         self.searched = []
+        self.deleted = []
 
     def has_collection(self, collection_name: str) -> bool:
         return collection_name in self.collections
@@ -22,6 +23,10 @@ class FakeMilvusClient:
     def search(self, collection_name, data, filter, limit, output_fields):
         self.searched.append((collection_name, data, filter, limit, output_fields))
         return [[{"id": "doc:0", "distance": 0.99, "entity": {"text": "hello"}}]]
+
+    def delete(self, collection_name, filter):
+        self.deleted.append((collection_name, filter))
+        return {"delete_count": 1}
 
 
 def test_milvus_store_creates_collection_and_upserts_rows() -> None:
@@ -50,4 +55,13 @@ def test_milvus_store_reuses_existing_collection_and_searches() -> None:
 
     assert result[0][0]["id"] == "doc:0"
     assert client.created == []
-    assert client.searched == [("documents", [[0.1, 0.2, 0.3]], 'document_id == "doc-001"', 2, ["id", "document_id", "chunk_index", "text", "start", "end"])]
+    assert client.searched == [("documents", [[0.1, 0.2, 0.3]], 'document_id == "doc-001"', 2, ["id", "document_id", "chunk_index", "text", "start", "end", "source_uri", "partition_kind", "partition_id"])]
+
+
+def test_milvus_store_deletes_all_chunks_for_document() -> None:
+    client = FakeMilvusClient()
+    client.collections.add("documents")
+    store = MilvusVectorStore(client, collection_name="documents", dimension=3)
+
+    assert store.delete_document("doc-001") == {"delete_count": 1}
+    assert client.deleted == [("documents", 'document_id == "doc-001"')]

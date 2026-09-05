@@ -69,6 +69,7 @@ class FakeOllama:
 class FakeMilvus:
     def __init__(self) -> None:
         self.rows = []
+        self.deleted = []
 
     def has_collection(self, *, collection_name):
         return True
@@ -78,6 +79,14 @@ class FakeMilvus:
 
     def search(self, *, collection_name, data, filter, limit, output_fields):
         return []
+
+    def delete(self, *, collection_name, filter):
+        self.deleted.append(filter)
+        return {"delete_count": 1}
+
+    def delete_document(self, document_id):
+        self.deleted.append(document_id)
+        return {"delete_count": 1}
 
 
 def test_package_exposes_one_public_facade() -> None:
@@ -118,6 +127,10 @@ def test_facade_composes_dms_persistence_indexing_and_search(monkeypatch) -> Non
 
         assert result.document_id == "doc-1"
         assert dms.uploads[0][0].created_by == "user-1"
+        assert dms.uploads[0][0].metadata == {
+            "title": "Hello",
+            "source_uri": "test://hello",
+        }
         assert len(vectors.rows) == 2
         assert facade.get_document_content(
             "doc-1",
@@ -129,6 +142,7 @@ def test_facade_composes_dms_persistence_indexing_and_search(monkeypatch) -> Non
 def test_facade_deletes_via_dms_core(monkeypatch) -> None:
     engine = create_engine("sqlite:///:memory:")
     dms = FakeDms()
+    vectors = FakeMilvus()
     monkeypatch.setattr("kbms.facade._build_dms_client", lambda **kwargs: dms)
     partition_kind = "personal"
     partition_id = "user-1"
@@ -139,7 +153,7 @@ def test_facade_deletes_via_dms_core(monkeypatch) -> None:
             minio_client=object(),
             bucket_name="test-bucket",
             ollama_client=FakeOllama(),
-            milvus_client=FakeMilvus(),
+            milvus_client=vectors,
             vector_dimension=1,
         )
         facade.delete_document(
@@ -154,6 +168,7 @@ def test_facade_deletes_via_dms_core(monkeypatch) -> None:
     assert dms.deletes[0][1].kind.value == "personal"
     assert dms.deletes[0][1].partition_id == "user-1"
     assert dms.deletes[0][2] is True
+    assert vectors.deleted == ['document_id == "doc-1"']
 
 
 def test_facade_exposes_kms_document_metadata_and_cursor_page(monkeypatch) -> None:
@@ -208,6 +223,28 @@ def test_facade_accepts_user_and_group_access_context(monkeypatch) -> None:
         )
 
     assert dms.reads[-1][2] is context
+
+
+def test_facade_restricts_search_to_authorized_partition(monkeypatch) -> None:
+    engine = create_engine("sqlite:///:memory:")
+    dms = FakeDms()
+    monkeypatch.setattr("kbms.facade._build_dms_client", lambda **kwargs: dms)
+    context = AccessContext(user_id="user-1", groups=frozenset({"group-1"}))
+
+    with Session(engine):
+        facade = KnowledgeManagement(
+            engine=engine, minio_client=object(), bucket_name="test-bucket",
+            ollama_client=FakeOllama(), milvus_client=FakeMilvus(), vector_dimension=1,
+        )
+        try:
+            facade.search(
+                "query", partition_kind="group", partition_id="group-2",
+                access_context=context,
+            )
+        except PermissionError:
+            pass
+        else:
+            raise AssertionError("unauthorized partition search was accepted")
 
 
 def test_facade_installs_host_access_policy_in_dms_client(monkeypatch) -> None:

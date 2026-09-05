@@ -49,7 +49,11 @@ class VectorStore(Protocol):
         *,
         limit: int = 5,
         document_id: str | None = None,
+        partition_kind: str | None = None,
+        partition_id: str | None = None,
     ) -> list[list[dict[str, object]]]: ...
+
+    def delete_document(self, document_id: str) -> object: ...
 
 
 class KnowledgeIndexer:
@@ -65,7 +69,15 @@ class KnowledgeIndexer:
         self.embedding_provider = embedding_provider
         self.vector_store = vector_store
 
-    def index(self, document_id: str, text: str) -> list[TextChunk]:
+    def index(
+        self,
+        document_id: str,
+        text: str,
+        *,
+        source_uri: str | None = None,
+        partition_kind: str | None = None,
+        partition_id: str | None = None,
+    ) -> list[TextChunk]:
         chunks = self.chunker.chunk(text, document_id=document_id)
         rows = [
             {
@@ -79,6 +91,12 @@ class KnowledgeIndexer:
             }
             for chunk in chunks
         ]
+        for row in rows:
+            if source_uri is not None:
+                row["source_uri"] = source_uri
+            if partition_kind is not None and partition_id is not None:
+                row["partition_kind"] = partition_kind
+                row["partition_id"] = partition_id
         if rows:
             self.vector_store.upsert(rows)
         return chunks
