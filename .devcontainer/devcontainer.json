@@ -1,24 +1,22 @@
 // For format details, see https://aka.ms/devcontainer.json. For config options, see the
 // README at: https://github.com/devcontainers/templates/tree/main/src/postgres
 {
-	"name": "python core devcontainer",
-	"dockerComposeFile": "docker-compose.yml",
+	"name": "docmesh kbms devcontainer",
+	"dockerComposeFile": ["docker-compose.yml", "docker-compose.minio.yml", "docker-compose.postgres.yml", "docker-compose.milvus.yml"],
 	"service": "app",
 	"mounts": [
 		"source=${localWorkspaceFolder},target=/workspaces/${localWorkspaceFolderBasename},type=bind,consistency=cached"
 	],
 	"workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
 	"features": {
-		"ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},
+		"ghcr.io/devcontainers/features/docker-in-docker:4": {},
 		"ghcr.io/devcontainers-extra/features/uv:1": {}
 	},
 	"customizations": {
 		"vscode": {
 			"extensions": [
 				"mhutchie.git-graph",
-				"GitHub.copilot-chat",
-				"ms-vscode.remote-repositories",
-				"openai.chatgpt"
+				"ms-vscode.remote-repositories"
 			]
 		}
 	},

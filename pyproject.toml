@@ -1,22 +1,33 @@
 [project]
-name = "py-template"
+name = "docmesh-kbms"
 version = "0.1.0"
-description = "Add your description here"
+description = "Document knowledge management system that extracts, chunks, and embeds documents for semantic search with dms-core, Ollama, and Milvus"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "aiosqlite>=0.22.1",
+    "dms-core>=0.11.0",
+    "ollama>=0.6.2",
+    "psycopg[binary]>=3.2.3",
+    "pymilvus[milvus-lite]>=3.0.1",
+    "sqlalchemy>=2.0.52",
+]
 
 [dependency-groups]
 dev = [
     "pytest-asyncio>=1.4.0",
+    "ruff>=0.16.6",
 ]
 
 [tool.setuptools.packages.find]
-include = ["py_template*"]
+include = ["kbms*"]
 exclude = []
 
 [tool.pytest.ini_options]
-testpaths = ["test_py_template"]
+testpaths = ["test_kbms"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
-markers = []
+markers = [
+    "integration: tests requiring configured external services",
+    "real_integration: end-to-end test using all configured services",
+]

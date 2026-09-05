@@ -1,0 +1,26 @@
+services:
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    restart: unless-stopped
+    ports:
+      - 80
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:17.5
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: docmesh
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: kbms
+    # ports:
+    #   - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kbms"]
+      interval: 3s
+      timeout: 3s
+      retries: 10

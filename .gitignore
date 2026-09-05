@@ -219,3 +219,4 @@ __marimo__/
 
 # Hermes Agent
 .hermes/
+.devcontainer/devcontainer-lock.json
