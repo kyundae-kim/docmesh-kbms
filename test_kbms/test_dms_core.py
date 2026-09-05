@@ -1,6 +1,16 @@
 from __future__ import annotations
 
-from dms import DocumentContent, DocumentPartition, PartitionKind, UploadDocumentResult
+from datetime import UTC, datetime
+
+from dms import (
+    DocumentContent,
+    DocumentPage,
+    DocumentPartition,
+    DocumentStatus,
+    PartitionKind,
+    PublicDocumentMetadata,
+    UploadDocumentResult,
+)
 
 from kbms.dms.dms_core import DmsCoreDocumentManager
 
@@ -10,6 +20,19 @@ class FakeDmsClient:
         self.uploads = []
         self.reads = []
         self.deletes = []
+        self.metadata = PublicDocumentMetadata(
+            document_id="doc-1",
+            original_filename="hello.txt",
+            content_type="text/plain",
+            file_size=5,
+            status=DocumentStatus.AVAILABLE,
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+            updated_at=datetime(2026, 1, 2, tzinfo=UTC),
+            partition=DocumentPartition(kind=PartitionKind.PERSONAL, partition_id="user-1"),
+            checksum="abc",
+            created_by="user-1",
+            extra_metadata={"title": "Hello"},
+        )
 
     def upload_document(self, request, *, partition):
         self.uploads.append((request, partition))
@@ -28,6 +51,12 @@ class FakeDmsClient:
     def delete_document(self, document_id, *, partition, hard_delete=False):
         self.deletes.append((document_id, partition, hard_delete))
         return {"document_id": document_id}
+
+    def list_documents(self, *, partition, cursor=None, limit=100, status=None, access_context=None):
+        return DocumentPage(items=[self.metadata], next_cursor="next", has_more=True)
+
+    def get_document_metadata(self, document_id, *, partition, access_context=None):
+        return self.metadata
 
 
 def test_dms_core_manager_uploads_reads_and_deletes_through_sdk() -> None:
@@ -78,3 +107,16 @@ def test_dms_core_manager_rejects_invalid_upload_and_document_id() -> None:
         assert str(error) == "document_id must not be blank"
     else:
         raise AssertionError("blank document ID was accepted")
+
+
+def test_dms_core_manager_lists_and_reads_public_metadata() -> None:
+    client = FakeDmsClient()
+    manager = DmsCoreDocumentManager(client)
+    partition = DocumentPartition(kind=PartitionKind.PERSONAL, partition_id="user-1")
+
+    page = manager.list(partition=partition, cursor="old", limit=10)
+    metadata = manager.metadata("doc-1", partition=partition)
+
+    assert page.items[0].document_id == "doc-1"
+    assert page.next_cursor == "next"
+    assert metadata.original_filename == "hello.txt"

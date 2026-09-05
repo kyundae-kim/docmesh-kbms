@@ -6,13 +6,33 @@ from typing import Protocol
 from dms import (
     DocumentContent,
     DocumentManagementClient,
+    DocumentPage,
     DocumentPartition,
+    PublicDocumentMetadata,
     UploadDocumentRequest,
     UploadDocumentResult,
 )
 
 
 class DmsCoreClient(Protocol):
+    def list_documents(
+        self,
+        *,
+        partition: DocumentPartition,
+        cursor: str | None = None,
+        limit: int = 100,
+        status: object | None = None,
+        access_context: object | None = None,
+    ) -> DocumentPage: ...
+
+    def get_document_metadata(
+        self,
+        document_id: str,
+        *,
+        partition: DocumentPartition,
+        access_context: object | None = None,
+    ) -> PublicDocumentMetadata: ...
+
     def upload_document(
         self,
         request: UploadDocumentRequest,
@@ -70,6 +90,31 @@ class DmsCoreDocumentManager:
             checksum=hashlib.sha256(content).hexdigest(),
         )
         return self.client.upload_document(request, partition=partition)
+
+    def list(
+        self,
+        *,
+        partition: DocumentPartition,
+        cursor: str | None = None,
+        limit: int = 100,
+    ) -> DocumentPage:
+        if limit <= 0:
+            raise ValueError("limit must be positive")
+        return self.client.list_documents(
+            partition=partition,
+            cursor=cursor,
+            limit=limit,
+        )
+
+    def metadata(
+        self,
+        document_id: str,
+        *,
+        partition: DocumentPartition,
+    ) -> PublicDocumentMetadata:
+        if not document_id.strip():
+            raise ValueError("document_id must not be blank")
+        return self.client.get_document_metadata(document_id, partition=partition)
 
     def read(
         self,

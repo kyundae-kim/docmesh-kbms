@@ -15,6 +15,8 @@ from .dms import (
     DmsCoreDocumentManager,
     DocumentIngestionService,
     DocumentRepository,
+    KnowledgeDocument,
+    KnowledgeDocumentPage,
     KnowledgeIndexer,
     KnowledgeSearchService,
     MilvusVectorStore,
@@ -124,6 +126,42 @@ class KnowledgeManagement:
             raise
         return result
 
+    def list_documents(
+        self,
+        *,
+        partition_kind: str,
+        partition_id: str,
+        cursor: str | None = None,
+        limit: int = 100,
+    ) -> KnowledgeDocumentPage:
+        """List documents using a KMS DTO rather than exposing dms-core types."""
+        partition = _build_partition(
+            partition_kind=partition_kind,
+            partition_id=partition_id,
+        )
+        page = self._dms.list(partition=partition, cursor=cursor, limit=limit)
+        return KnowledgeDocumentPage(
+            items=[self._to_knowledge_document(item) for item in page.items],
+            next_cursor=page.next_cursor,
+            has_more=page.has_more,
+        )
+
+    def get_document_metadata(
+        self,
+        document_id: str,
+        *,
+        partition_kind: str,
+        partition_id: str,
+    ) -> KnowledgeDocument:
+        """Return public document metadata in the KMS vocabulary."""
+        partition = _build_partition(
+            partition_kind=partition_kind,
+            partition_id=partition_id,
+        )
+        return self._to_knowledge_document(
+            self._dms.metadata(document_id, partition=partition)
+        )
+
     def get_document_content(
         self,
         document_id: str,
@@ -161,3 +199,22 @@ class KnowledgeManagement:
         document_id: str | None = None,
     ) -> list[SearchHit]:
         return self._search.search(query, limit=limit, document_id=document_id)
+
+    @staticmethod
+    def _to_knowledge_document(metadata: Any) -> KnowledgeDocument:
+        partition = metadata.partition
+        status = metadata.status.value if hasattr(metadata.status, "value") else str(metadata.status)
+        return KnowledgeDocument(
+            document_id=metadata.document_id,
+            filename=metadata.original_filename,
+            content_type=metadata.content_type,
+            file_size=metadata.file_size,
+            status=status,
+            created_at=metadata.created_at,
+            updated_at=metadata.updated_at,
+            partition_kind=partition.kind.value,
+            partition_id=partition.partition_id,
+            checksum=metadata.checksum,
+            created_by=metadata.created_by,
+            metadata=dict(metadata.extra_metadata),
+        )

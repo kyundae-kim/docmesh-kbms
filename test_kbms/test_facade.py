@@ -1,4 +1,12 @@
-from dms import DocumentContent, UploadDocumentResult
+from datetime import UTC, datetime
+
+from dms import (
+    DocumentContent,
+    DocumentPage,
+    DocumentStatus,
+    PublicDocumentMetadata,
+    UploadDocumentResult,
+)
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
@@ -29,6 +37,27 @@ class FakeDms:
     def delete_document(self, document_id, *, partition, hard_delete=False):
         self.deletes.append((document_id, partition, hard_delete))
         return {"document_id": document_id}
+
+    def _metadata(self, partition):
+        return PublicDocumentMetadata(
+            document_id="doc-1",
+            original_filename="hello.txt",
+            content_type="text/plain",
+            file_size=5,
+            status=DocumentStatus.AVAILABLE,
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+            updated_at=datetime(2026, 1, 2, tzinfo=UTC),
+            partition=partition,
+            checksum="abc",
+            created_by="user-1",
+            extra_metadata={"title": "Hello"},
+        )
+
+    def list_documents(self, *, partition, cursor=None, limit=100, status=None, access_context=None):
+        return DocumentPage(items=[self._metadata(partition)], next_cursor="next", has_more=True)
+
+    def get_document_metadata(self, document_id, *, partition, access_context=None):
+        return self._metadata(partition)
 
 
 class FakeOllama:
@@ -129,3 +158,39 @@ def test_facade_deletes_via_dms_core(monkeypatch) -> None:
     assert dms.deletes[0][1].kind.value == "personal"
     assert dms.deletes[0][1].partition_id == "user-1"
     assert dms.deletes[0][2] is True
+
+
+def test_facade_exposes_kms_document_metadata_and_cursor_page(monkeypatch) -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    dms = FakeDms()
+    monkeypatch.setattr("kbms.facade._build_dms_client", lambda **kwargs: dms)
+
+    with Session(engine) as session:
+        facade = KnowledgeManagement(
+            session=session,
+            engine=engine,
+            minio_client=object(),
+            bucket_name="test-bucket",
+            ollama_client=FakeOllama(),
+            milvus_client=FakeMilvus(),
+            vector_dimension=1,
+        )
+        page = facade.list_documents(
+            partition_kind="personal",
+            partition_id="user-1",
+            cursor="old",
+            limit=10,
+        )
+        document = facade.get_document_metadata(
+            "doc-1",
+            partition_kind="personal",
+            partition_id="user-1",
+        )
+
+    assert page.items[0].filename == "hello.txt"
+    assert page.items[0].metadata == {"title": "Hello"}
+    assert page.next_cursor == "next"
+    assert page.has_more is True
+    assert document.status == "available"
+    assert document.partition_id == "user-1"
